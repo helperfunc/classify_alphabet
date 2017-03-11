@@ -14,195 +14,287 @@ from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_f
 from misc.save_sprite_labels import generate_sprite
 from misc.datasets import MnistDataset
 from progressbar import ETA, Bar, Percentage, ProgressBar
+import functools
 
 tf.logging.set_verbosity(tf.logging.INFO)
 
 tf.app.flags.DEFINE_string(
-    'save_path', '/Users/huixu/Documents/codelabs/alphabet2cla/logs/', 'Where to save the model checkpoints.')
-tf.app.flags.DEFINE_string('log_dir', '/Users/huixu/Documents/codelabs/alphabet2cla/logs/',
+    'save_path', '/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/', 'Where to save the model checkpoints.')
+tf.app.flags.DEFINE_string('log_dir', '/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/',
                            'Where to save the logs for visualization in TensorBoard.')
 FLAGS = tf.app.flags.FLAGS
 
 BATCH_SIZE = 666
 EPOCH_SIZE = 52832 // BATCH_SIZE
+LEARNING_RATE = 1E-4
 
 # Our application logic will be added here
 
-def conv_layer(input, size_in, size_out, training, name="conv"):
-    with tf.name_scope(name):
-        w = tf.Variable(tf.truncated_normal([5, 5, size_in, size_out], stddev=0.1), name="W")
-        b = tf.Variable(tf.constant(0.1, shape=[size_out]), name="B")
-        conv = tf.nn.conv2d(input, w, strides=[1, 1, 1, 1], padding="SAME")
-        #nor_conv = normalization_layers.BatchNormalization().apply(conv, training=training)
-        act = tf.nn.relu(conv + b)
-        #act = tf.nn.relu(nor_conv + b)
-        tf.summary.histogram("weights", w)
-        tf.summary.histogram("bias", b)
-        tf.summary.histogram("activations", act)
-        return tf.nn.max_pool(act, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
+def conv_layer(input, size_in, size_out):
+    #with tf.name_scope(name):
+	w = tf.get_variable(initializer=tf.truncated_normal([5, 5, size_in, size_out], stddev=0.1), name="W")
+	b = tf.get_variable(initializer=tf.constant(0.1, shape=[size_out]), name="B")
+	conv = tf.nn.conv2d(input, w, strides=[1, 1, 1, 1], padding="SAME")
+	#nor_conv = normalization_layers.BatchNormalization().apply(conv, training=training)
+	act = tf.nn.relu(conv + b)
+	#act = tf.nn.relu(nor_conv + b)
+	tf.summary.histogram("weights", w)
+	tf.summary.histogram("bias", b)
+	tf.summary.histogram("activations", act)
+	#return tf.nn.max_pool(act, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
+	return act
         
-def fc_layer(input, size_in, size_out, training, name="fc"):
-    with tf.name_scope(name):
-        w = tf.Variable(tf.truncated_normal([size_in, size_out], stddev=0.1), name="W")
-        b = tf.Variable(tf.constant(0.1, shape=[size_out]), name="B")
-        act = tf.nn.relu(tf.matmul(input, w) + b)
-        #act = tf.nn.relu( normalization_layers.BatchNormalization().apply( tf.matmul(input, w) + b,  training=training) )
-        tf.summary.histogram("weights", w)
-        tf.summary.histogram("bias", b)
-        tf.summary.histogram("activations", act)
-        return act
+def fc_layer(input, size_in, size_out):
+    #with tf.name_scope(name):
+	w = tf.get_variable(initializer=tf.truncated_normal([size_in, size_out], stddev=0.1), name="W")
+	b = tf.get_variable(initializer=tf.constant(0.1, shape=[size_out]), name="B")
+	act = tf.nn.relu(tf.matmul(input, w) + b)
+	#act = tf.nn.relu( normalization_layers.BatchNormalization().apply( tf.matmul(input, w) + b,  training=training) )
+	tf.summary.histogram("weights", w)
+	tf.summary.histogram("bias", b)
+	tf.summary.histogram("activations", act)
+	return act
         
-def lenet5_model(learning_rate, use_two_conv, use_two_fc, hparam):
-    tf.reset_default_graph()
-    sess = tf.Session()
+def doublewrap(function):
+    """
+    A decorator decorator, allowing to use the decorator to be used without parentheses
+    if not arguments are provided. All arguments must be optional.
+    """
+    @functools.wraps(function)
+    def decorator(*args, **kwargs):
+        if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+            return function(args[0])
+        else:
+            return lambda wrapee: function(wrapee, *args, **kwargs)
+    return decorator
     
-    # Setup placeholders, and reshape the data
-    x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
-    x_image = tf.reshape(x, [-1, 28, 28, 1])
-    tf.summary.image('input', x_image, 3)
-    #y = tf.placeholder(tf.float32, shape=[None, 52], name="labels")
-    y = tf.placeholder(tf.int64, shape=[None], name="labels")
-    # tf.nn.sparse_softmax_cross_entropy_with_logits can't take one hot labels
-    training = array_ops.placeholder(dtype='bool') # for batch noramlization and dropout
+@doublewrap
+def define_scope(function, scope=None, *args, **kwargs):
+    """
+    A decorator for functions that define TensorFlow operations. The wrapped
+    function will only be executed once. Subsequent calls to it will directly
+    return the result so that operations are added to the graph only once.
     
-    if use_two_conv:
-        conv1 = conv_layer(x_image, 1, 20, training, "conv1")
-        conv_out = conv_layer(conv1, 20, 50, training,"conv2")
-    else:
-        conv1 = conv_layer(x_image, 1, 50, training, "conv")
-        conv_out = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding="SAME")
-
-    flattened = tf.reshape(conv_out, [-1, 7 * 7 * 50])
+    The operations added by the function live within a tf.variable_scope(). If
+    this decorator is used with arguments, they will be forwarded to the variable
+    scope. The scope name defaults to the name of the wrapped function.
+    """
+    attribute = '_cache_' + function.__name__
+    name = scope or function.__name__
+    @property
+    @functools.wraps(function)
+    def decorator(self):
+        if not hasattr(self, attribute):
+            with tf.variable_scope(name, *args, **kwargs):
+                #https://www.tensorflow.org/programmers_guide/variable_scope#initializers_in_variable_scope
+                setattr(self, attribute, function(self))
+        return getattr(self, attribute)
+    return decorator
     
-    if use_two_fc:
-        fc1 = fc_layer(flattened, 7 * 7 * 50, 500, training, "fc1")
-        embedding_input = fc1
-        embedding_size = 500
+class Model:
+    def __init__(self, image, label, is_train, params):
+        self.image = image
+        self.label = label
+        self.is_train = is_train
+        self.lr = params["learning_rate"]
+        self.net_forward
+        self.inference
+        self.loss
+        self.prediction
+        self.optimize
+        self.accuracy
+        self.embedding
+    
+    @define_scope
+    def net_forward(self):
+        # Input Layer
+        # Reshape X to 4-D tensor: [batch_size, width, height, channels]
+        # MNIST images are 28x28 pixels, and have one color channel
+        input_layer = tf.reshape(self.image, [-1, 28, 28, 1])
+        # Convolutional Layer #1
+        # Computes 32 features using a 5x5 filter with ReLU activation.
+        # Padding is added to preserve width and height.
+        # Input Tensor Shape: [batch_size, 28, 28, 1]
+        # Output Tensor Shape: [batch_size, 28, 28, 32]
+        #conv1 = tf.layers.conv2d(inputs=input_layer,filters=32,kernel_size=[5, 5],padding="same",activation=tf.nn.relu)
+        with tf.variable_scope("conv1"):
+            conv1 = conv_layer(input_layer, 1, 20)
         
+        # Pooling Layer #1
+        # First max pooling layer with a 2x2 filter and stride of 2
+        # Input Tensor Shape: [batch_size, 28, 28, 32]
+        # Output Tensor Shape: [batch_size, 14, 14, 32]
+        pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2, padding='same', name="pool1")
+        
+        # Convolutional Layer #2
+        # Computes 64 features using a 5x5 filter.
+        # Padding is added to preserve width and height.
+        # Input Tensor Shape: [batch_size, 14, 14, 32]
+        # Output Tensor Shape: [batch_size, 14, 14, 64]
+        #conv2 = tf.layers.conv2d(inputs=pool1,filters=64,kernel_size=[5, 5],padding="same",activation=tf.nn.relu)
+        with tf.variable_scope("conv2"):
+            conv2 = conv_layer(pool1, 20, 50)
+        
+        # Pooling Layer #2
+        # Second max pooling layer with a 2x2 filter and stride of 2
+        # Input Tensor Shape: [batch_size, 14, 14, 64]
+        # Output Tensor Shape: [batch_size, 7, 7, 64]
+        pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2, padding='same', name="pool2")
+        
+        # Flatten tensor into a batch of vectors
+        # Input Tensor Shape: [batch_size, 7, 7, 64]
+        # Output Tensor Shape: [batch_size, 7 * 7 * 64]
+        pool2_flat = tf.reshape(pool2, [-1, 7 * 7 * 50])
+        # Dense Layer
+        # Densely connected layer with 1024 neurons
+        # Input Tensor Shape: [batch_size, 7 * 7 * 64]
+        # Output Tensor Shape: [batch_size, 1024]
+        #dense = tf.layers.dense(inputs=pool2_flat, units=1024, activation=tf.nn.relu)
+        with tf.variable_scope("fc1"):
+            dense = fc_layer(pool2_flat, 7 * 7 * 50, 500)
+        """
         # Add dropout operation; 0.6 probability that element will be kept
-        dropout = tf.layers.dropout(inputs=fc1, rate=0.4, training=training, name="dropout")
-  
-        #logits = fc_layer(fc1, 1024, 52, training, "fc2")
-        logits = fc_layer(dropout, 500, 52, training, "fc2")
-    else:
-        embedding_input = flattened
-        embedding_size = 7 * 7 * 50
-        # Add dropout operation; 0.6 probability that element will be kept
-        dropout = tf.layers.dropout(inputs=logits, rate=0.4, training=training, name="dropout")
-        #logits = fc_layer(flattened, 7 * 7 * 50, 52, training, "fc")
-        logits = fc_layer(dropout, 7 * 7 * 50, 52, training, "fc")
+        dropout = tf.layers.dropout(inputs=dense, rate=0.4, training=self.is_train)
         
-    with tf.name_scope("xent"):
+        # Logits layer
+        # Input Tensor Shape: [batch_size, 1024]
+        # Output Tensor Shape: [batch_size, 10]
+        #logits = tf.layers.dense(inputs=dropout, units=10)
+        with tf.variable_scope("fc2"):
+            logits = fc_layer(dropout, 1024, 52)
+        
+        forward_out = {"logits": logits, "embedding_input": dense, "embedding_size": 1024}
+        """
+        return dense
+        
+    @define_scope
+    def inference(self):
+    	# Add dropout operation; 0.6 probability that element will be kept
+        dropout = tf.layers.dropout(inputs=self.net_forward, rate=0.4, training=self.is_train)
+        
+        # Logits layer
+        # Input Tensor Shape: [batch_size, 1024]
+        # Output Tensor Shape: [batch_size, 10]
+        #logits = tf.layers.dense(inputs=dropout, units=10)
+        with tf.variable_scope("fc2"):
+            logits = fc_layer(dropout, 500, 52)
+        
+        return logits
+        
+    @define_scope
+    def prediction(self):
+        # Generate Predictions
+        prob = tf.nn.softmax(self.inference, name="softmax_tensor")
+        """
+        cla = tf.argmax(input=prob, axis=1)
+        predictions = {
+            "classes": cla,
+            "probabilities": prob
+        }
+        """
+        return prob
+    
+    @define_scope
+    def loss(self):
         xent = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=logits, labels=y), name="xent")
+                logits=self.inference, labels=self.label), name="xent")
         tf.summary.scalar("xent", xent)
+        return xent
         
-    with tf.name_scope("train"):
-        train_step = tf.train.AdamOptimizer(learning_rate).minimize(xent)
+    @define_scope
+    def optimize(self):
+        optimizer = tf.train.AdamOptimizer(self.lr)
+        return optimizer.minimize(self.loss)
         
-    with tf.name_scope("accuracy"):
-        #correct_prediction = tf.equal(tf.argmax(logits, 1), tf.argmax(y, 1))
-        correct_prediction = tf.equal(tf.argmax(logits, 1), y)
+    @define_scope   
+    def accuracy(self):
+        correct_prediction = tf.equal(self.label, tf.argmax(self.prediction, 1))
         accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
         tf.summary.scalar("accuracy", accuracy)
+        return accuracy
         
-    # Generate Predictions
-    predictions = {
-        "classes": tf.argmax(
-            input=logits, axis=1),
-        "probabilities": tf.nn.softmax(
-            logits, name="softmax_tensor")
-    }
+    @define_scope
+    def embedding(self):
+        embedding = tf.get_variable(initializer=tf.zeros([1024, 500]), name="test_embedding")
+        # first 1024 is  Number of items, self.net_forward["embedding_size"] is dimensionality of the embedding
+        assignment = embedding.assign(self.net_forward)
+        return assignment
+        
+
+def main(_=None):
+    # Set model params
+    model_params = {"learning_rate": LEARNING_RATE}
     
-    summ = tf.summary.merge_all()
-    
-    embedding = tf.Variable(tf.zeros([1024, embedding_size]), name="test_embedding")
-    # first 1024 is 1024 images, second is daoshu di er ceng neurons
-    assignment = embedding.assign(embedding_input)
-    saver = tf.train.Saver()
-    
-    sess.run(tf.global_variables_initializer())
-    writer = tf.summary.FileWriter(FLAGS.log_dir + hparam)
-    writer.add_graph(sess.graph)
-    #writer.close()
-    #exit(0)
-    
-    config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
-    embedding_config = config.embeddings.add()
-    embedding_config.tensor_name = embedding.name
-    
+    # Training data, nodes in a graph
     dataset = MnistDataset()
-    embedding_imgs, embedding_labels = generate_sprite(dataset)
-    # Convert to 1-hot representation.
-    #embedding_labels = (np.arange(52) == embedding_labels[:, None]).astype(np.float32)
+    train_batch_xs, train_batch_ys = dataset.gen_img_next_batch(dataset.get_gen_image(dataset.tfrecord_filename), BATCH_SIZE)
     
+    is_train = tf.placeholder(tf.bool, name="is_train")
+    
+    x = tf.placeholder(tf.float32, shape=[None, 784], name="x")
+    y = tf.placeholder(tf.int64, shape=[None], name="labels")
+    
+    model = Model(x, y, is_train, model_params)
+    
+    #model = Model(train_batch_xs, train_batch_xs, is_train, model_params)
+    
+    # Embedding, eval data, numpy array
+    embedding_imgs, embedding_labels = generate_sprite(dataset) # numpy array
+    # Format: tensorflow/contrib/tensorboard/plugins/projector/projector_config.proto
+    config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
+    # You can add multiple embeddings. Here we add only one.
+    embedding_config = config.embeddings.add()
+    embedding_config.tensor_name = model.embedding.name
+    
+    # Link this tensor to its metadata file (e.g. labels).
     embedding_config.sprite.image_path = FLAGS.log_dir + 'sprite_1024.png'
     embedding_config.metadata_path = FLAGS.log_dir + 'labels_1024.tsv'
     # Specify the width and height of a single thumbnail
     embedding_config.sprite.single_image_dim.extend([28, 28])
-    tf.contrib.tensorboard.plugins.projector.visualize_embeddings(writer, config)
-    #for epoch in range(20):
-    # http://stackoverflow.com/questions/41276012/sess-runtensor-does-nothing
-    batch_xs, batch_ys = dataset.gen_img_next_batch(dataset.get_gen_image(dataset.tfrecord_filename), BATCH_SIZE)
+    
+    # Use the same LOG_DIR where you stored your checkpoint.
+    summary_writer = tf.summary.FileWriter(FLAGS.log_dir)
+    
+    # The next line writes a projector_config.pbtxt in the LOG_DIR. TensorBoard will
+    # read this file during startup.
+    tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
+    
+    sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
+    
+    
+    summ = tf.summary.merge_all()
+    summary_writer.add_graph(sess.graph)
+    
+    saver = tf.train.Saver()
+    
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess,coord=coord)
-    
     widgets = ["epoch #%d|" % 1, Percentage(), Bar(), ETA()]
     pbar = ProgressBar(maxval=20001, widgets=widgets)
     pbar.start()
     for i in range(20001):
-    	pbar.update(i)
-        train_images, train_labels = sess.run([batch_xs, batch_ys]) # is it fetch different data everytime? yes
-        #print('train_label 0: %d' % train_labels[0])
-        #print(train_images[0])
-        #print(train_labels[np.argmax(train_labels)]) # 51
-        #exit(0)
-        # Convert to dense 1-hot representation.
-        #train_labels = (np.arange(52) == train_labels[:, None]).astype(np.float32)
-        
-        #batch = mnist.train.next_batch(100)
+        pbar.update(i)
+        train_images, train_labels = sess.run([train_batch_xs, train_batch_ys]) # is it fetch different data everytime? yes
         if i % 5 == 0:
-            #[train_accuracy, s] = sess.run([accuracy, summ], feed_dict={x: batch[0], y: batch[1]})
-            [train_accuracy, s] = sess.run([accuracy, summ], feed_dict={x: train_images, y: train_labels, training:False})
-            writer.add_summary(s, i)
+            [train_accuracy, s] = sess.run([model.accuracy, summ], feed_dict={x: train_images, y: train_labels, is_train:False})
+            summary_writer.add_summary(s, i)
             print(i,'-',train_accuracy)
         if i % 500 == 0:
-            #sess.run(assignment, feed_dict={x: mnist.test.images[:1024], y:minst.test.labels[:1024]})
-            sess.run(assignment, feed_dict={x: embedding_imgs, y:embedding_labels, training:False})
-            # how to make sure they are the same as sprite images?
+            sess.run(model.embedding, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
             
-            embedding_imgs_accuracy = sess.run(accuracy, feed_dict={x: embedding_imgs, y:embedding_labels, training:False})
+            embedding_imgs_accuracy = sess.run(model.accuracy, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
             print(embedding_imgs_accuracy)
             
             saver.save(sess, os.path.join(FLAGS.save_path, "model.ckpt"), i)
-        #sess.run(train_step, feed_dict={x: batch[0], y: batch[1]})
-        sess.run(train_step, feed_dict={x: train_images, y: train_labels, training:True})
+
+        sess.run(model.optimize, feed_dict={x: train_images, y: train_labels, is_train:True})
     
     coord.request_stop()
     coord.join(threads)
-    writer.close()
+    summary_writer.close()
     sess.close()
-    
-def make_hparam_string(learning_rate, use_two_fc, use_two_conv):
-    conv_param = "conv=2" if use_two_conv else "conv=1"
-    fc_param = "fc=2" if use_two_fc else "fc=1"
-    return "lr_%.0E,%s,%s" % (learning_rate, conv_param, fc_param)
-
-def main(_=None):
-    # You can try adding some more learning rates
-    for learning_rate in [1E-4]:
-        
-        # Include "False" as a value to try different model architectures
-        for use_two_fc in [True]:
-            for use_two_conv in [True]:
-                # Construct a hyperparameter string for each one (e.g. "lr_1E-3,fc=2,conv=2")
-                hparam = make_hparam_string(learning_rate, use_two_fc, use_two_conv)
-                print('Starting run for %s' % hparam)
-                
-                # Actually run with the new settings
-                lenet5_model(learning_rate, use_two_fc, use_two_conv, hparam)
-                
                 
 if __name__ == "__main__":
     tf.app.run()
