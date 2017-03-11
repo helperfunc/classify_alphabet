@@ -10,7 +10,8 @@ from skimage.io import imsave
 def generate_sprite(dataset):
     #dataset = MnistDataset()
     #imgs, labels = dataset.get_gen_image(dataset.tfrecord_filename)
-    sprite, sprite_labels = dataset.gen_img_next_batch(dataset.get_gen_image(dataset.tfrecord_filename), 1024)
+    #sprite, sprite_labels = dataset.gen_img_next_batch(dataset.get_gen_image(dataset.tfrecord_filename), 1024)
+    sprite, sprite_labels = tf.train.batch(dataset.get_gen_image(dataset.tfrecord_filename), 1024, capacity=1024)
     coord = tf.train.Coordinator()
     
     with tf.Session() as sess:
@@ -20,7 +21,7 @@ def generate_sprite(dataset):
         imgs = pile_up(sprite_data, 32, 32, dataset.image_shape_size)
         imgs = np.asarray(imgs.eval()).reshape((28*(1024/32),28*32))
         
-        imsave('/Users/huixu/Documents/codelabs/alphabet2cla/logs/sprite_1024.png', imgs)
+        imsave('/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/sprite_1024.png', imgs)
         labels_tsv(sprite_labels_data)
         coord.request_stop()
         coord.join(threads)
@@ -49,7 +50,7 @@ def labels_tsv(sprite_labels):
 	unique_labels = [l.strip() for l in tf.gfile.FastGFile(labels_file, 'r').readlines()]
 	#print(unique_labels) #['p', 'q']
 	#exit(0)
-	with open('/Users/huixu/Documents/codelabs/alphabet2cla/logs/labels_1024.tsv', 'w') as f:
+	with open('/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/labels_1024.tsv', 'w') as f:
 		for label in sprite_labels:
 			#print(label) # 1 should be turned to q
 			#exit(0)
