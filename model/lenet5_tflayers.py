@@ -104,6 +104,7 @@ class Model:
         self.optimize
         self.accuracy
         self.embedding
+        self.embedding_name
     
     @define_scope
     def net_forward(self):
@@ -217,6 +218,7 @@ class Model:
     @define_scope
     def embedding(self):
         embedding = tf.get_variable(initializer=tf.zeros([1024, 500]), name="test_embedding")
+        self.embedding_name = embedding.name
         # first 1024 is  Number of items, self.net_forward["embedding_size"] is dimensionality of the embedding
         assignment = embedding.assign(self.net_forward)
         return assignment
@@ -245,7 +247,7 @@ def main(_=None):
     config = tf.contrib.tensorboard.plugins.projector.ProjectorConfig()
     # You can add multiple embeddings. Here we add only one.
     embedding_config = config.embeddings.add()
-    embedding_config.tensor_name = model.embedding.name
+    embedding_config.tensor_name = model.embedding_name
     
     # Link this tensor to its metadata file (e.g. labels).
     embedding_config.sprite.image_path = FLAGS.log_dir + 'sprite_1024.png'
