@@ -25,7 +25,8 @@ def generate_sprite(dataset):
         labels_tsv(sprite_labels_data)
         coord.request_stop()
         coord.join(threads)
-    return sprite_data, sprite_labels_data
+    #return sprite_data, sprite_labels_data
+    return sprite, sprite_labels
         #exit(0)
 
 def pile_up(x, rows, cols, image_shape_size):
