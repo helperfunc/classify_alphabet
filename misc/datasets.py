@@ -13,6 +13,8 @@ class MnistDataset(object):
         self.image_shape = (28, 28, 1)
         self.image_shape_size = (28, 28)
         self.batch_size_num = batch_size_num
+        self.embedding_imgs = None
+        self.embedding_labels = None
 
     #@define_scope
     # Function to tell TensorFlow how to read a single image from input file
@@ -96,9 +98,10 @@ class MnistDataset(object):
     #@define_scope
     def get_embedding_images(self):
         batch_imgs, batch_labels = tf.train.batch(self.get_an_image(self.embedding_tfrecord), batch_size=self.batch_size_num, capacity=self.batch_size_num)
-        #if not os.path.exists("/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/sprite_1024.png"):
-        batch_imgs, batch_labels = self.generate_sprite(batch_imgs, batch_labels)
-        return batch_imgs, batch_labels
+        #if self.embedding_labels == None:
+        self.embedding_imgs, self.embedding_labels = self.generate_sprite(batch_imgs, batch_labels)
+        #return batch_imgs, batch_labels
+        #print(self.embedding_labels)
 
     def generate_sprite(self, sprite, sprite_labels):
         #dataset = MnistDataset()
@@ -108,14 +111,15 @@ class MnistDataset(object):
         coord = tf.train.Coordinator()
 
         with tf.Session() as sess:
+            # new session is ok?
             threads = tf.train.start_queue_runners(sess=sess,coord=coord)
             sprite_data, sprite_labels_data = sess.run([sprite, sprite_labels])
-            #print(sprite_labels_data)
-            imgs = pile_up(sprite_data, 26, 26, self.image_shape_size)
-            imgs = np.asarray(imgs.eval()).reshape((28*(676/26),28*26))
+            if not os.path.exists("/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/sprite_1024.png"):
+                imgs = pile_up(sprite_data, 26, 26, self.image_shape_size)
+                imgs = np.asarray(imgs.eval()).reshape((28*(676/26),28*26))
 
-            imsave('/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/sprite_1024.png', imgs)
-            labels_tsv(sprite_labels_data)
+                imsave('/Users/huixu/Documents/codelabs/alphabet2cla/logs_test/sprite_1024.png', imgs)
+                labels_tsv(sprite_labels_data)
             coord.request_stop()
             coord.join(threads)
         #return tf.constant(sprite_data), tf.constant(sprite_labels_data)

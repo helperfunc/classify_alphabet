@@ -3,7 +3,7 @@
 本代码库包含了用TensorFlow 1.0分类英文字母的代码。包括：1）导入文件夹中的图片数据；2）分类模型的构建；
 3）模型图与分类结果的可视化；4）保存freez后的常数模型；5）测试单张图片的分类结果；这一整套深度学习模型构建和评价过程。
 代码属于拼凑而得，并非代表最优流程。
-比如图片数据保存在了TFRecords中，但导入到图中用到了feed_dict。
+如，图片数据保存在了TFRecords中，导入训练数据时用了queue runner, 为了在训练过程中进行测试以及将测试数据作为embedding_viz的sprite图片，用feed_dict将测试图片输入到queue runner的输入Tensor中。
 再如freez模型，即常数化各节点，一般是用于将模型部署到嵌入式环境中。
 还比如代码没有包括Android等移动端模型的部署代码。
 
@@ -16,7 +16,7 @@ $ pip install tensorflow
 
 ## 1)导入数据
 
-训练数据集下载路径：http://www.ee.surrey.ac.uk/CVSSP/demos/chars74k/ 
+训练数据集下载路径：http://www.ee.surrey.ac.uk/CVSSP/demos/chars74k/
 选用的数据集是其中的EnglishFnt.tgz，原数据集为128*128的灰度图像。
 
 ### 1.1 生成28*28的灰度图像
@@ -41,7 +41,7 @@ $ python misc/resize_image.py
 ### 1.2 生成TFRecords
 修改misc/gen_labels.py中的路径，根据data_resized的子文件夹名生成labels.txt文件。
 ```
-$ python misc/gen_labels.py 
+$ python misc/gen_labels.py
 ```
 新建一个data_resized_TFRecord文件夹，修改misc/build_image_data.py中的train_directory，output_directory和labels_file的路径。生成TFRecord。
 ```

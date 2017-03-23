@@ -23,7 +23,8 @@ tf.app.flags.DEFINE_string('log_dir', '/Users/huixu/Documents/codelabs/alphabet2
 FLAGS = tf.app.flags.FLAGS
 
 BATCH_SIZE = 676
-EPOCH_SIZE = 52832 // BATCH_SIZE
+BATCH_PER_EPOCH = 52832 // BATCH_SIZE
+EPOCH_SIZE = 256
 LEARNING_RATE = 1E-4
 
 # Our application logic will be added here
@@ -95,6 +96,7 @@ class Model:
         self.label = label
         self.is_train = is_train
         self.lr = params["learning_rate"]
+        self.global_step = tf.get_variable(name='global_step', shape=[], initializer=tf.constant_initializer(0), dtype=tf.int32, trainable=False)
         self.net_forward
         self.inference
         self.loss
@@ -103,6 +105,7 @@ class Model:
         self.accuracy
         self.embedding
         self.embedding_name
+
 
     @define_scope
     def net_forward(self):
@@ -199,13 +202,13 @@ class Model:
         xent = tf.reduce_mean(
             tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=self.inference, labels=self.label), name="xent")
-        tf.summary.scalar("xent", xent)
+        tf.summary.scalar("loss", xent)
         return xent
 
     @define_scope
     def optimize(self):
         optimizer = tf.train.AdamOptimizer(self.lr)
-        return optimizer.minimize(self.loss)
+        return optimizer.minimize(self.loss, global_step=self.global_step)
 
     @define_scope
     def accuracy(self):
@@ -228,13 +231,14 @@ def main(_=None):
     model_params = {"learning_rate": LEARNING_RATE}
     # Training data, nodes in a graph
     is_train = tf.placeholder(tf.bool, name="is_train")
-    is_train_data = tf.placeholder(tf.bool, name="is_train_data")
+    #is_train_data = tf.placeholder(tf.bool, name="is_train_data")
     #data_type = tf.placeholder_with_default(0, [], name="data_type")
     dataset = MnistDataset(BATCH_SIZE)
     #train_batch = dataset.gen_img_next_batch(dataset.get_gen_image(dataset.tfrecord_filename), BATCH_SIZE)
     train_batch_imgs, train_batch_labels = dataset.get_train_batch_images()
-    _batch_imgs, _batch_labels = tf.identity(train_batch_imgs), tf.identity(train_batch_labels)
-    embedding_imgs, embedding_labels = dataset.get_embedding_images()
+    #_batch_imgs, _batch_labels = tf.identity(train_batch_imgs), tf.identity(train_batch_labels)
+    #embedding_imgs, embedding_labels = dataset.get_embedding_images()
+    dataset.get_embedding_images()
     # Embedding, eval data, numpy array
     #embedding_imgs, embedding_labels = dataset.generate_sprite()
 
@@ -276,44 +280,61 @@ def main(_=None):
     # read this file during startup.
     tf.contrib.tensorboard.plugins.projector.visualize_embeddings(summary_writer, config)
 
-    sess = tf.Session()
+    sess = tf.InteractiveSession()
+
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     sess.run(init_op)
 
 
     summ = tf.summary.merge_all()
-    #summary_writer.add_graph(sess.graph)
+
 
     saver = tf.train.Saver()
 
+    ckpt = tf.train.get_checkpoint_state(FLAGS.save_path)
+    if ckpt and ckpt.model_checkpoint_path:
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        print('restore ckpt from %s', ckpt.model_checkpoint_path)
+
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess,coord=coord)
+
+
     widgets = ["epoch #%d|" % 1, Percentage(), Bar(), ETA()]
-    pbar = ProgressBar(maxval=20001, widgets=widgets)
+    pbar = ProgressBar(maxval=20000, widgets=widgets)
     pbar.start()
-    for i in range(20001):
-        pbar.update(i)
-        #train_images, train_labels = sess.run([train_batch_xs, train_batch_ys]) # is it fetch different data everytime? yes
-        if i % 5 == 0:
-            #[train_accuracy, s] = sess.run([model.accuracy, summ], feed_dict={x: train_images, y: train_labels, is_train:False})
-            [train_accuracy, s] = sess.run([model.accuracy, summ], feed_dict={is_train:False})
-            summary_writer.add_summary(s, i)
-            print(i,'-',train_accuracy)
-        #if i % 500 == 0:
-            #sess.run(model.embedding, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
-            #print(sess.run(valid_batch_labels))
-            # check whether numpy ndarray embedding_labels has been feeded into Tensor train_batch_labels
-            #print(sess.run(_batch_labels, feed_dict={train_batch_labels:embedding_labels}))
-            sess.run(model.embedding, feed_dict={is_train:False, train_batch_imgs:embedding_imgs, train_batch_labels:embedding_labels})
-            #embedding_imgs_accuracy = sess.run(model.accuracy, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
-            embedding_imgs_accuracy = sess.run(model.accuracy, feed_dict={is_train:False, train_batch_imgs:embedding_imgs, train_batch_labels:embedding_labels})
-            print(embedding_imgs_accuracy)
+    summary_writer.add_graph(sess.graph)
 
-            saver.save(sess, os.path.join(FLAGS.save_path, "model.ckpt"), i)
-            #summary_writer.add_graph(sess.graph)
+    for e in range(EPOCH_SIZE):
+        #pbar.update(e)
+        #print(model.global_step.eval())
+        #print(sess.run(_batch_labels))
+        for i in range(BATCH_PER_EPOCH):
+            #train_images, train_labels = sess.run([train_batch_xs, train_batch_ys]) # is it fetch different data everytime? yes
+            #global_step_num = (e+1)*i
+            global_step_num = model.global_step.eval()
 
-        #sess.run(model.optimize, feed_dict={x: train_images, y: train_labels, is_train:True})
-        sess.run(model.optimize, feed_dict={is_train:True})
+            if  global_step_num % 5 == 0:
+                pbar.update(global_step_num)
+                #[train_accuracy, s] = sess.run([model.accuracy, summ], feed_dict={x: train_images, y: train_labels, is_train:False})
+                [train_accuracy, s] = sess.run([model.accuracy, summ], feed_dict={is_train:False})
+                summary_writer.add_summary(s, i)
+                #print(i,'-',train_accuracy)
+            #if global_step_num % 500 == 0:
+                #sess.run(model.embedding, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
+                #print(sess.run(valid_batch_labels))
+                # check whether numpy ndarray embedding_labels has been feeded into Tensor train_batch_labels
+                #print(sess.run(_batch_labels, feed_dict={train_batch_labels:embedding_labels}))
+                sess.run(model.embedding, feed_dict={is_train:False, train_batch_imgs:dataset.embedding_imgs, train_batch_labels:dataset.embedding_labels})
+                #embedding_imgs_accuracy = sess.run(model.accuracy, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
+                embedding_imgs_accuracy = sess.run(model.accuracy, feed_dict={is_train:False, train_batch_imgs:dataset.embedding_imgs, train_batch_labels:dataset.embedding_labels})
+                #print(embedding_imgs_accuracy)
+
+                saver.save(sess, os.path.join(FLAGS.save_path, "model.ckpt"), global_step=model.global_step)
+                #summary_writer.add_graph(sess.graph)
+
+            #sess.run(model.optimize, feed_dict={x: train_images, y: train_labels, is_train:True})
+            sess.run(model.optimize, feed_dict={is_train:True})
 
     coord.request_stop()
     coord.join(threads)

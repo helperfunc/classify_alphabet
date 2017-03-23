@@ -1,3 +1,24 @@
+"""
+dataset_dir structure
+  data_dir/label_0/image0.jpeg
+  data_dir/label_0/image1.jpg
+  ...
+  data_dir/label_1/weird-image.jpeg
+  data_dir/label_1/my-image.jpeg
+  ...
+
+ valid_dir structure
+   data_dir/label_0/image0.jpeg
+   data_dir/label_0/image1.jpg
+   ...
+   data_dir/label_0/image20.jpg
+   ...
+   data_dir/label_1/weird-image.jpeg
+   data_dir/label_1/my-image.jpeg
+   ...
+
+ what left in dataset_dir is the training dataset
+"""
 import os
 import shutil
 
