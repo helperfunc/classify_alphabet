@@ -92,14 +92,14 @@ class MnistDataset(object):
         return batch_imgs, batch_labels
 
     def get_eval_batch_images(self):
-        batch_imgs, batch_labels = tf.train.shuffle_batch(self.get_an_image(self.embedding_tfrecord), batch_size=self.batch_size_num, capacity=1000 + 3 * self.batch_size_num, min_after_dequeue=1000)
+        batch_imgs, batch_labels = tf.train.batch(self.get_an_image(self.embedding_tfrecord), batch_size=self.batch_size_num, capacity=1000 + 3 * self.batch_size_num)
         return batch_imgs, batch_labels
 
     #@define_scope
     def get_embedding_images(self):
         batch_imgs, batch_labels = tf.train.batch(self.get_an_image(self.embedding_tfrecord), batch_size=self.batch_size_num, capacity=self.batch_size_num)
-        #if self.embedding_labels == None:
-        self.embedding_imgs, self.embedding_labels = self.generate_sprite(batch_imgs, batch_labels)
+        if self.embedding_labels == None:
+            self.embedding_imgs, self.embedding_labels = self.generate_sprite(batch_imgs, batch_labels)
         #return batch_imgs, batch_labels
         #print(self.embedding_labels)
 

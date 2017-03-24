@@ -303,7 +303,7 @@ def main(_=None):
     widgets = ["epoch #%d|" % 1, Percentage(), Bar(), ETA()]
     pbar = ProgressBar(maxval=20000, widgets=widgets)
     pbar.start()
-    summary_writer.add_graph(sess.graph)
+    #summary_writer.add_graph(sess.graph)
 
     for e in range(EPOCH_SIZE):
         #pbar.update(e)
@@ -331,7 +331,7 @@ def main(_=None):
                 #print(embedding_imgs_accuracy)
 
                 saver.save(sess, os.path.join(FLAGS.save_path, "model.ckpt"), global_step=model.global_step)
-                #summary_writer.add_graph(sess.graph)
+                summary_writer.add_graph(sess.graph)
 
             #sess.run(model.optimize, feed_dict={x: train_images, y: train_labels, is_train:True})
             sess.run(model.optimize, feed_dict={is_train:True})
