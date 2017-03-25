@@ -24,7 +24,7 @@ FLAGS = tf.app.flags.FLAGS
 
 BATCH_SIZE = 676
 BATCH_PER_EPOCH = 52832 // BATCH_SIZE
-EPOCH_SIZE = 256
+EPOCH_SIZE = 50
 LEARNING_RATE = 1E-4
 
 # Our application logic will be added here
@@ -301,7 +301,7 @@ def main(_=None):
 
 
     widgets = ["epoch #%d|" % 1, Percentage(), Bar(), ETA()]
-    pbar = ProgressBar(maxval=20000, widgets=widgets)
+    pbar = ProgressBar(maxval=EPOCH_SIZE, widgets=widgets)
     pbar.start()
     #summary_writer.add_graph(sess.graph)
 
@@ -320,7 +320,7 @@ def main(_=None):
                 [train_accuracy, s] = sess.run([model.accuracy, summ], feed_dict={is_train:False})
                 summary_writer.add_summary(s, i)
                 #print(i,'-',train_accuracy)
-            #if global_step_num % 500 == 0:
+            if global_step_num % 500 == 0:
                 #sess.run(model.embedding, feed_dict={x: embedding_imgs, y:embedding_labels, is_train:False})
                 #print(sess.run(valid_batch_labels))
                 # check whether numpy ndarray embedding_labels has been feeded into Tensor train_batch_labels
